@@ -18,6 +18,7 @@
 import { ARCHETYPE_TAGS, labelFor } from './tags.js';
 import { game } from './data.js';
 import { deckSize } from './state.js';
+import { biasOf, TIER_STEP, REMOVAL_STEP, tierShiftLabel } from './bias.js';
 
 /** Component weights (plan §17). Mutable so the UI can expose tuning. */
 export const WEIGHTS = {
@@ -464,6 +465,7 @@ export function scoreCandidate(cardId, upgraded, ctx) {
   const dup = duplicateValue(card, ctx.player);
   const upg = upgradeValue(card, upgraded, ctx.cardMetrics);
   const party = partyAdjustment(card, ctx.state);
+  const pref = preferenceAdjustment(card, base);
 
   const components = {
     base: base.value,
@@ -487,6 +489,12 @@ export function scoreCandidate(cardId, upgraded, ctx) {
     contributions.push({ key: 'party', label: 'Party synergy', delta: party.value, component: null, weight: null });
     total += party.value;
   }
+  // Applied last and unweighted: one click of the ranker is one whole tier, and
+  // diluting it through a weight would quietly break that promise.
+  if (pref.delta) {
+    contributions.push({ key: 'preference', label: pref.label, delta: pref.delta, component: null, weight: null, steps: pref.steps });
+    total += pref.delta;
+  }
   contributions.sort((a, b) => b.delta - a.delta);
 
   return {
@@ -494,7 +502,7 @@ export function scoreCandidate(cardId, upgraded, ctx) {
     total: clamp(total),
     components,
     contributions,
-    detail: { base, synergy, relics, context, dup, upg, party },
+    detail: { base, synergy, relics, context, dup, upg, party, pref },
     confidence: confidenceOf(base, ctx, party),
   };
 }
@@ -506,7 +514,28 @@ const CONTRIB_LABELS = {
   context: 'Run context',
   duplicate: 'Duplicate impact',
   upgrade: 'Upgrade value',
+  preference: 'Your weighting',
 };
+
+/**
+ * The user's own thumb on the scale (plan §12: the breakdown must stay an exact
+ * decomposition, so this is a contribution like any other rather than a hidden
+ * multiplier). One step moves the card one Codex tier.
+ */
+export function preferenceAdjustment(card, base) {
+  const steps = biasOf(card.id);
+  if (!steps) return { steps: 0, delta: 0, label: '', note: '' };
+  const tier = base?.row?.tier || null;
+  const shift = tierShiftLabel(steps, tier);
+  return {
+    steps,
+    tier,
+    shift,
+    delta: steps * TIER_STEP,
+    label: steps > 0 ? 'You ranked this up' : 'You ranked this down',
+    note: `${shift} — your call, not the data`,
+  };
+}
 
 /**
  * Confidence reflects how much real evidence sits behind the number — sample
@@ -676,6 +705,13 @@ export function rankRemovals(ctx) {
     // Multiplayer: do not cut the card holding the party together (plan §25).
     if (ctx.state.game.mode === 'multiplayer' && (card.traits.has('ally-buff') || card.multiplayer_only)) {
       add('Party-critical', 'one of the few things you bring for the team', -12);
+    }
+
+    // Your own weighting cuts both ways: a card you ranked down is a card you
+    // want out of the deck, and one you ranked up should survive the chop.
+    const steps = biasOf(card.id);
+    if (steps) {
+      add('Your weighting', steps > 0 ? 'you ranked this card up' : 'you ranked this card down', -steps * REMOVAL_STEP);
     }
 
     contributions.sort((a, b) => b.value - a.value);

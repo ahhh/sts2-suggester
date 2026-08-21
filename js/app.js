@@ -11,6 +11,8 @@ import * as Score from './scoring.js';
 import { loadGameData, loadMetrics, defaultBracket, game, dataStatus } from './data.js';
 import { clearAllLocalData } from './storage.js';
 import * as UI from './ui.js';
+import * as Bias from './bias.js';
+import { initTooltips, setMetricsSource, hide as hideTooltip } from './tooltip.js';
 
 /* ------------------------------------------------------------------- boot */
 
@@ -26,8 +28,12 @@ async function boot() {
     return;
   }
 
+  Bias.loadBiases();
   const resumed = S.restore();
   S.subscribe(onStateChange);
+
+  setMetricsSource(() => UI.view.cardMetrics);
+  initTooltips();
 
   await syncMetrics();
   UI.renderAll();
@@ -125,6 +131,44 @@ function importRun() {
     }
   };
   input.click();
+}
+
+/* ------------------------------------------------------- personal weighting */
+
+/**
+ * Weightings live outside run state, so they do not go through `S.emit()`.
+ * A visible ranking was computed under the old weights, so recompute it rather
+ * than leaving a stale order on screen.
+ */
+function refreshAfterBias() {
+  hideTooltip();
+  if (UI.view.ranked && UI.view.cardMetrics) UI.view.ranked = Score.rankRewards(UI.ctx());
+  UI.renderAll();
+}
+
+function announce(cardId, before, after) {
+  const name = game.cards.get(cardId)?.name ?? 'That card';
+  if (after === before) {
+    UI.toast(`${name} is already ${before > 0 ? 'as high' : 'as low'} as your weighting goes (${Bias.MAX_BIAS} tiers).`);
+    return;
+  }
+  if (!after) { UI.toast(`${name} is back on the community ranking.`); return; }
+  const tier = UI.view.cardMetrics?.get(cardId, false)?.row?.tier || null;
+  UI.toast(`${name} ${after > 0 ? 'ranked up' : 'ranked down'} — ${Bias.tierShiftLabel(after, tier)}.`);
+}
+
+function nudgeBias(cardId, dir) {
+  const before = Bias.biasOf(cardId);
+  const after = Bias.nudgeBias(cardId, dir);
+  refreshAfterBias();
+  announce(cardId, before, after);
+}
+
+function setBias(cardId, steps) {
+  const before = Bias.biasOf(cardId);
+  const after = Bias.setBias(cardId, steps);
+  refreshAfterBias();
+  announce(cardId, before, after);
 }
 
 /* --------------------------------------------------------- event dispatch */
@@ -225,6 +269,15 @@ const ACTIONS = {
     S.emit();
   },
   'toggle-skip': (el) => { S.state.currentChoice.allowSkip = el.checked; UI.view.ranked = null; S.emit(); },
+  'cand-bias-up': (el) => nudgeBias(el.dataset.id, +1),
+  'cand-bias-down': (el) => nudgeBias(el.dataset.id, -1),
+  'cand-bias-clear': (el) => setBias(el.dataset.id, 0),
+  'clear-bias': () => {
+    if (!confirm('Forget every card weighting you have set? Runs and decks are untouched.')) return;
+    Bias.clearBiases();
+    refreshAfterBias();
+    UI.toast('Card weightings cleared.');
+  },
   rank,
   took: (el) => {
     const card = game.cards.get(el.dataset.id);
@@ -269,6 +322,13 @@ const ACTIONS = {
   'pf-rarity': (el) => {
     UI.picker.filters.rarity = UI.picker.filters.rarity === el.dataset.v ? undefined : el.dataset.v;
     UI.renderPicker();
+  },
+  'pf-colors': () => {
+    UI.picker.allColors = !UI.picker.allColors;
+    UI.renderPicker();
+    UI.toast(UI.picker.allColors
+      ? 'Showing every character’s cards — for Kaleidoscope and friends.'
+      : 'Back to cards your character can actually be offered.');
   },
 };
 

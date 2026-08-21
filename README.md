@@ -17,8 +17,19 @@ Pages as-is.
 - Searchable card and relic album with real card art, filtered to your
   character's pool. Search matches names, rules text and mechanics, so
   `poison` or `discard` finds cards by what they do.
+- **Other characters' cards** are one toggle away in the album, for the runs
+  where Kaleidoscope or Prismatic Shard hands you somebody else's colour. Off by
+  default, because the rest of the time those cards cannot appear; borrowed
+  cards are labelled with whose they are.
+- **Hover any card or relic** — in your deck, in the offer, in the ranking, in
+  the album — for the full card: art, rules text, what upgrading it would do,
+  and its community numbers.
 - Ranks a card reward with **Skip as a real candidate**, scored on the same
   0–100 scale.
+- **Rank a card up or down yourself** before evaluating it. Each click moves it
+  one Codex tier (D → C, and so on), the weighting sticks to the card across
+  runs, and it shows up in the breakdown as your call rather than being folded
+  invisibly into the score.
 - Explains every score as an exact decomposition — the breakdown sums to the
   number shown, it is not a plausible story told alongside it.
 - Ranks removal targets, and refuses to suggest cards that are Eternal and
@@ -55,9 +66,10 @@ The interface holds one rule throughout, and it carries meaning:
 |---|---|
 | **Jade (cool)** | *Measured.* Community run statistics. |
 | **Ember (warm)** | *Inferred.* Mechanical fit to your build. |
+| **Iris (cold)** | *Yours.* Tiers you pushed a card by hand. |
 
 Score bars, ledger rows and badges all obey it, so a glance tells you how much
-of a recommendation is evidence and how much is inference.
+of a recommendation is evidence, how much is inference, and how much is you.
 
 ### Measured components
 
@@ -97,6 +109,20 @@ The extractor checks polarity, because "Gain 2 Strength" and "Enemy loses 9
 Strength" mention the same word and mean opposite things — and `powers_applied`
 stores magnitude without sign, so the text is the only reliable signal.
 
+### Your own judgement
+
+The up/down control on each offered card is a third provenance, kept separate
+from the other two rather than blended into them. One step is worth exactly
+`TIER_STEP` points — the width of a Codex tier band — and it is applied
+unweighted and last, so the promise the control makes ("one click, one tier") is
+the promise the number keeps. It appears as its own ledger row, its own colour
+on the score bar, and its own legend entry.
+
+Weightings are keyed to the card, not the offer, and live in preferences rather
+than in the run: they survive a new run, they are *not* written into a run
+export, and they also steer the removal advisor — a card you ranked down becomes
+a better cut, one you ranked up is protected from the chop.
+
 ## Layout
 
 ```
@@ -104,10 +130,13 @@ index.html          shell
 styles.css          design system
 js/tags.js          mechanic extraction — traits / wants / role profile
 js/data.js          provider adapter, cache, bracket fallback
-js/album.js         card & relic pools, search
+js/album.js         card & relic pools, cross-colour toggle, search
 js/state.js         run state, mutations, starter seeding
+js/bias.js          your own per-card weighting, and the tier ladder
 js/scoring.js       pick / skip / removal engines
 js/ui.js            rendering
+js/tooltip.js       the hover card
+js/format.js        rules-text escaping, keyword colouring, clamping
 js/app.js           bootstrap and event routing
 js/storage.js       localStorage + IndexedDB
 data/fallback.json  offline snapshot
@@ -120,8 +149,8 @@ can be swapped in without changing the UI or the scoring engine.
 
 ## Not implemented
 
-- Personal run-history import (`.run` / `.save` parsing) and hybrid
-  personal/community weighting.
+- Personal run-history import (`.run` / `.save` parsing), so weighting could be
+  learned from your own results rather than only set by hand.
 - Potion tracking. The field exists in the run state; nothing reads it yet.
 - Shop, event, relic-reward and route advice.
 

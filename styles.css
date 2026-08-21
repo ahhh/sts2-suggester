@@ -6,8 +6,11 @@
    One rule governs the whole palette — and it carries meaning, not decoration:
      EMBER (warm)  = fit to YOUR build. Mechanistic, inferred from what cards do.
      JADE  (cool)  = COMMUNITY evidence. Statistical, measured from real runs.
+     IRIS  (cold)  = YOUR OWN JUDGEMENT. Neither measured nor inferred — the
+                     tiers you pushed a card up or down by hand.
    Score bars, badges and explanation rows all obey it, so a glance at a
-   recommendation tells you how much is data and how much is inference.
+   recommendation tells you how much is data, how much is inference, and how
+   much is you.
    ========================================================================== */
 
 :root {
@@ -28,6 +31,10 @@
   --jade:       #4fd3a6;
   --jade-deep:  #1e7359;
   --jade-wash:  rgba(79, 211, 166, 0.13);
+
+  --iris:       #a78bfa;
+  --iris-deep:  #6d4bd0;
+  --iris-wash:  rgba(167, 139, 250, 0.14);
 
   --blood:      #e05068;
   --gold:       #e5b55f;
@@ -390,6 +397,59 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .slot-body { flex: 1; min-width: 0; }
 .slot-name { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slot-meta { font-size: 11px; color: var(--smoke-dim); }
+.slot-shift { font-family: var(--mono); color: var(--iris); font-weight: 500; }
+
+/* --- your own thumb on the scale ------------------------------------------ */
+
+.bias {
+  display: inline-flex;
+  align-items: stretch;
+  flex: none;
+  border: 1px solid var(--stone-line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--ash);
+}
+.bias[data-state="up"]   { border-color: var(--iris-deep); background: var(--iris-wash); }
+.bias[data-state="down"] { border-color: #5a3a44; background: rgba(224, 80, 104, 0.1); }
+
+.bias-btn, .bias-val {
+  border: 0;
+  background: none;
+  color: var(--smoke);
+  font-family: var(--mono);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s;
+}
+.bias-btn { width: 20px; font-size: 11px; }
+.bias-btn:hover:not(:disabled) { background: var(--stone-hi); color: var(--bone); }
+.bias-btn:disabled, .bias-val:disabled { opacity: 0.35; cursor: default; }
+
+.bias-val {
+  min-width: 24px;
+  font-size: 11px;
+  border-left: 1px solid var(--stone-line);
+  border-right: 1px solid var(--stone-line);
+  color: var(--smoke-dim);
+}
+.bias-val:hover:not(:disabled) { background: var(--stone-hi); color: var(--bone); }
+.bias[data-state="up"] .bias-val   { color: var(--iris); }
+.bias[data-state="down"] .bias-val { color: var(--blood); }
+
+/* The same weighting, restated on the ranked result it moved. */
+.bias-tag {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--iris-deep);
+  color: var(--iris);
+  cursor: help;
+}
+.bias-tag[data-state="down"] { border-color: #6e2a35; color: var(--blood); }
 
 /* --- the signature: a score bar split into evidence and fit ---------------- */
 
@@ -426,6 +486,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bar-seg { position: absolute; top: 0; bottom: 0; transition: width 0.55s cubic-bezier(0.2,0.7,0.3,1), left 0.55s cubic-bezier(0.2,0.7,0.3,1); }
 .bar-seg[data-kind="evidence"] { background: linear-gradient(180deg, var(--jade), var(--jade-deep)); }
 .bar-seg[data-kind="fit"]      { background: linear-gradient(180deg, var(--ember), var(--ember-deep)); }
+.bar-seg[data-kind="preference"] { background: linear-gradient(180deg, var(--iris), var(--iris-deep)); }
 .bar-seg[data-kind="negative"] { background: repeating-linear-gradient(45deg, #4a2530, #4a2530 3px, #3a1d26 3px, #3a1d26 6px); }
 .bar-tick { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--smoke-dim); opacity: 0.7; }
 
@@ -433,6 +494,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: baseline; }
 .legend i[data-kind="evidence"] { background: var(--jade); }
 .legend i[data-kind="fit"] { background: var(--ember); }
+.legend i[data-kind="preference"] { background: var(--iris); }
 
 .result-foot {
   display: flex;
@@ -491,6 +553,7 @@ details.why[open] > summary { color: var(--bone); }
 .ledger-row i { align-self: stretch; border-radius: 2px; background: var(--stone-line); }
 .ledger-row[data-kind="evidence"] i { background: var(--jade); }
 .ledger-row[data-kind="fit"] i { background: var(--ember); }
+.ledger-row[data-kind="preference"] i { background: var(--iris); }
 .ledger-row[data-kind="negative"] i { background: var(--blood); }
 .ledger-label { color: var(--bone); }
 .ledger-note { display: block; color: var(--smoke-dim); font-size: 11.5px; line-height: 1.35; }
@@ -598,6 +661,18 @@ details.why[open] > summary { color: var(--bone); }
 .filter:hover { color: var(--bone); border-color: var(--smoke-dim); }
 .filter[aria-pressed="true"] { background: var(--bone); color: var(--ash); border-color: var(--bone); font-weight: 600; }
 
+/*
+ * This one widens the pool rather than filtering the view, so it reads
+ * differently from its neighbours — and it stays visibly "off" by default.
+ */
+.filter--wide { margin-left: auto; border-style: dashed; }
+.filter--wide[aria-pressed="true"] {
+  background: var(--iris-wash);
+  color: var(--iris);
+  border: 1px solid var(--iris-deep);
+  font-weight: 500;
+}
+
 .picker-grid {
   overflow-y: auto;
   padding: 14px 16px 20px;
@@ -621,7 +696,25 @@ details.why[open] > summary { color: var(--bone); }
   transition: transform 0.13s, border-color 0.13s, box-shadow 0.13s;
 }
 .albumcard:hover { transform: translateY(-3px); border-color: var(--ember-deep); box-shadow: 0 8px 18px rgba(0,0,0,0.45); }
-.albumcard-art { aspect-ratio: 1 / 1; background: #100d14 center 20% / cover no-repeat; border-bottom: 1px solid var(--stone-line); }
+.albumcard-art { position: relative; aspect-ratio: 1 / 1; background: #100d14 center 20% / cover no-repeat; border-bottom: 1px solid var(--stone-line); }
+
+/* A borrowed card: yours only because a relic said so. */
+.albumcard--foreign { border-color: var(--iris-deep); }
+.albumcard--foreign:hover { border-color: var(--iris); }
+.albumcard-color {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  padding: 2px 5px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--iris);
+  background: linear-gradient(180deg, transparent, rgba(16, 13, 20, 0.92) 55%);
+  text-align: right;
+}
 .albumcard-art--relic { background-size: 58%; background-position: center; }
 .albumcard-body { padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 2px; }
 .albumcard-name { font-size: 12.5px; line-height: 1.25; font-weight: 500; }
@@ -698,6 +791,91 @@ details.why[open] > summary { color: var(--bone); }
   animation: rise 0.22s ease-out;
 }
 @keyframes rise { from { opacity: 0; transform: translate(-50%, 10px); } }
+
+/* --------------------------------------------------------------- hover card */
+
+/* Rows are deliberately terse; this is where the rest of the card lives. */
+.tip {
+  position: fixed;
+  z-index: 110;
+  width: 288px;
+  max-width: calc(100vw - 24px);
+  padding: 10px 11px 11px;
+  background: var(--stone-hi);
+  border: 1px solid var(--stone-line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  animation: tip-in 0.12s ease-out;
+}
+.tip[hidden] { display: none; }
+@keyframes tip-in { from { opacity: 0; transform: translateY(3px); } }
+
+.tip-head { display: flex; gap: 9px; align-items: center; margin-bottom: 8px; }
+.tip-art {
+  width: 46px; height: 46px; flex: none;
+  object-fit: cover; object-position: center 20%;
+  border-radius: var(--r-sm);
+  background: var(--ash);
+  border: 1px solid var(--stone-line);
+}
+.tip-title { min-width: 0; }
+.tip-name { display: block; font-size: 14px; font-weight: 600; color: var(--bone); line-height: 1.2; }
+.tip-sub { display: block; font-size: 10.5px; color: var(--smoke-dim); margin-top: 3px; letter-spacing: 0.03em; }
+
+.tip-text { font-size: 12.5px; line-height: 1.45; color: var(--bone); }
+.tip-muted { color: var(--smoke-dim); font-style: italic; }
+
+.tip-up { color: var(--gold); font-family: var(--mono); margin-left: 3px; }
+
+/* What upgrading this card would actually buy you. */
+.tip-upgrade {
+  margin-top: 7px;
+  padding-left: 8px;
+  border-left: 2px solid var(--gold);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--smoke);
+}
+.tip-upgrade-tag {
+  display: block;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 2px;
+}
+
+.tip-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+.tip-tags span {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--smoke-dim);
+  border: 1px solid var(--stone-line);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.tip-stats {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--stone-line);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--jade);
+}
+.tip-stats b { color: var(--jade); font-weight: 600; }
+.tip-stats em { color: var(--gold); font-style: normal; }
+
+.tip-bias {
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--iris);
+}
 
 /* ------------------------------------------------------------- responsive */
 

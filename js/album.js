@@ -25,15 +25,18 @@ export function colorOf(characterId) {
  * @param {'singleplayer'|'multiplayer'|'daily'} mode
  * @param {'reward'|'deck'} purpose  reward pools exclude curses and statuses;
  *   deck entry includes them, because runs acquire them.
+ * @param {{allColors?: boolean}} opts  `allColors` drops the character
+ *   restriction, for the relics and events that hand you another character's
+ *   cards. Off by default: the normal pool is the honest one.
  */
-export function cardPool(characterId, mode, purpose = 'reward') {
+export function cardPool(characterId, mode, purpose = 'reward', { allColors = false } = {}) {
   const color = colorOf(characterId);
   return game.cardList.filter((c) => {
     if (c.multiplayer_only && mode !== 'multiplayer') return false;
     const rarity = c.rarity_key || c.rarity;
     if (NEVER_IN_DECK.has(rarity)) return false;
 
-    const own = c.color === color || c.color === 'colorless';
+    const own = c.color === color || c.color === 'colorless' || (allColors && isCharacterColor(c.color));
     if (purpose === 'reward') {
       if (rarity === 'Curse' || rarity === 'Status') return false;
       return own;
@@ -41,6 +44,28 @@ export function cardPool(characterId, mode, purpose = 'reward') {
     // Deck entry: your colour, colourless, plus anything a run can inflict.
     return own || c.color === 'curse' || c.color === 'status' || c.color === 'event';
   });
+}
+
+/** True for a playable character's colour, as opposed to curse/status/event. */
+export function isCharacterColor(color) {
+  const c = String(color || '').toLowerCase();
+  for (const id of game.characters.keys()) if (colorOf(id) === c) return true;
+  return false;
+}
+
+/** "Silent" for `silent`, so an off-colour card says whose it is. */
+export function colorLabel(color) {
+  const c = String(color || '').toLowerCase();
+  for (const ch of game.characters.values()) {
+    if (colorOf(ch.id) === c) return ch.name.replace(/^The /, '');
+  }
+  return c ? c.charAt(0).toUpperCase() + c.slice(1) : '';
+}
+
+/** How many cards the character restriction is currently hiding. */
+export function offColorCount(characterId, mode, purpose) {
+  return cardPool(characterId, mode, purpose, { allColors: true }).length
+    - cardPool(characterId, mode, purpose).length;
 }
 
 export function relicPool(characterId) {

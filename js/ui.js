@@ -9,32 +9,26 @@
 import * as S from './state.js';
 import * as Score from './scoring.js';
 import { game, dataStatus, BRACKETS, defaultBracket } from './data.js';
-import { cardPool, relicPool, imageUrl, search } from './album.js';
+import { cardPool, relicPool, imageUrl, search, colorOf, colorLabel, offColorCount } from './album.js';
 import { labelFor } from './tags.js';
+import { esc, rich, richClamp, signed } from './format.js';
+import { biasOf, biasBadge, biasCount, tierShiftLabel, MAX_BIAS } from './bias.js';
 
 /* ------------------------------------------------------------------ helpers */
 
 const $ = (sel) => document.querySelector(sel);
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-/** The API marks up rules text with `[gold]...[/gold]`. Keep the emphasis. */
-const KW_COLOR = { gold: 'var(--gold)', blue: 'var(--t-skill)', red: 'var(--blood)', pink: 'var(--r-ancient)' };
-function rich(text) {
-  return esc(text || '')
-    .replace(/\[(\/?)([a-z]+)\]/gi, (m, close, name) => {
-      const c = KW_COLOR[name.toLowerCase()];
-      if (!c) return '';
-      return close ? '</span>' : `<span style="color:${c}">`;
-    })
-    .replace(/\n/g, '<br>');
+/**
+ * Which half of the duotone a contribution belongs to. `preference` is neither
+ * measured nor inferred, so it gets its own colour rather than borrowing one.
+ */
+const KIND = { base: 'evidence', upgrade: 'evidence', deckSynergy: 'fit', relicSynergy: 'fit', duplicate: 'fit', context: 'fit', party: 'fit', preference: 'preference' };
+const kindOf = (c) => (c.key === 'preference' ? 'preference' : c.delta < 0 ? 'negative' : KIND[c.key] || 'fit');
+
+/** The Codex tier for a card in the bracket currently loaded, if it has one. */
+function tierOf(cardId, upgraded = false) {
+  return view.cardMetrics?.get(cardId, upgraded)?.row?.tier || null;
 }
-const plain = (text) => String(text || '').replace(/\[\/?[a-z]+\]/gi, '').replace(/\n/g, ' ').trim();
-
-const signed = (n) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}`;
-
-/** Which half of the duotone a contribution belongs to. */
-const KIND = { base: 'evidence', upgrade: 'evidence', deckSynergy: 'fit', relicSynergy: 'fit', duplicate: 'fit', context: 'fit', party: 'fit' };
-const kindOf = (c) => (c.delta < 0 ? 'negative' : KIND[c.key] || 'fit');
 
 let toastTimer = null;
 export function toast(msg) {
@@ -278,8 +272,12 @@ function renderRunPanel() {
       <h3>Your data</h3>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn--sm btn--ghost" data-act="import-run">Import run</button>
+        ${biasCount() ? `<button class="btn btn--sm btn--ghost btn--danger" data-act="clear-bias">Clear ${biasCount()} card weighting${biasCount() > 1 ? 's' : ''}</button>` : ''}
         <button class="btn btn--sm btn--ghost btn--danger" data-act="clear-data">Clear local data</button>
       </div>
+      <p class="muted" style="font-size:11.5px;margin:6px 0 0">
+        Card weightings are yours, not the run's — they survive a new run and are not written into an export.
+      </p>
     </div>`;
 }
 
@@ -389,7 +387,7 @@ function deckRow(entry) {
   const cost = c.cost === -1 ? 'X' : c.cost ?? '—';
   const qty = entry.normal + entry.upgraded;
   return `
-    <div class="deckrow ${entry.upgraded ? 'deckrow--upgraded' : ''}" title="${esc(plain(c.description))}">
+    <div class="deckrow ${entry.upgraded ? 'deckrow--upgraded' : ''}" data-tip="${c.id}" data-tip-upgraded="${entry.upgraded > 0 && entry.normal === 0}">
       <span class="spine" data-type="${type}"></span>
       <span class="cost num">${cost}</span>
       <span class="deckrow-name">${esc(c.name)}${entry.upgraded ? ` <span class="up">+${entry.upgraded}</span>` : ''}</span>
@@ -407,7 +405,7 @@ function relicChip(id) {
   const r = game.relics.get(id);
   if (!r) return '';
   const img = imageUrl(r);
-  return `<button class="relic-chip" data-act="relic-remove" data-id="${id}" title="${esc(plain(r.description))} — click to remove">
+  return `<button class="relic-chip" data-act="relic-remove" data-id="${id}" data-tip="${id}" data-tip-kind="relic" aria-label="${esc(r.name)} — click to remove">
     ${img ? `<img src="${img}" alt="" loading="lazy">` : ''}${esc(r.name)}<span class="x">×</span></button>`;
 }
 
@@ -466,21 +464,46 @@ function candidateSlot(cand, i) {
   const card = game.cards.get(cand.cardId);
   if (!card) return '';
   const img = imageUrl(card);
+  const bias = biasOf(card.id);
+  const tier = tierOf(card.id, cand.upgraded);
+  const shift = bias ? tierShiftLabel(bias, tier) : '';
   return `
-    <div class="slot slot--filled">
+    <div class="slot slot--filled" data-tip="${card.id}" data-tip-upgraded="${!!cand.upgraded}">
       ${img ? `<img src="${img}" alt="" loading="lazy">` : ''}
       <span class="slot-body">
         <span class="slot-name">${esc(card.name)}${cand.upgraded ? '<span class="up" style="color:var(--gold)">+</span>' : ''}</span>
-        <span class="slot-meta">${esc(card.type)} · ${esc(card.rarity)} · ${card.cost === -1 ? 'X' : card.cost} energy</span>
+        <span class="slot-meta">
+          ${esc(card.type)} · ${esc(card.rarity)} · ${card.cost === -1 ? 'X' : card.cost} energy${tier && !bias ? ` · ${esc(tier)}-tier` : ''}
+          ${bias ? `<b class="slot-shift">${esc(shift)}</b>` : ''}
+        </span>
       </span>
+      ${biasControl(card.id, bias, shift)}
       <button class="btn btn--sm btn--ghost" data-act="toggle-cand-upgrade" data-i="${i}" title="Toggle upgraded">${cand.upgraded ? '+' : '↑'}</button>
-      <button class="btn btn--sm btn--ghost btn--danger" data-act="remove-candidate" data-i="${i}">×</button>
+      <button class="btn btn--sm btn--ghost btn--danger" data-act="remove-candidate" data-i="${i}" title="Remove from the pool">×</button>
     </div>`;
+}
+
+/**
+ * Your thumb on the scale, before the ranking runs. Each click is one Codex
+ * tier, and the weighting sticks to the card across runs — so a card you keep
+ * getting burned by stays demoted the next time it shows up.
+ */
+function biasControl(cardId, bias, shift) {
+  const down = `Rank down${bias > -MAX_BIAS ? '' : ' (already at the bottom of your scale)'}`;
+  const up = `Rank up${bias < MAX_BIAS ? '' : ' (already at the top of your scale)'}`;
+  const state = bias > 0 ? 'up' : bias < 0 ? 'down' : 'none';
+  return `
+    <span class="bias" data-state="${state}" title="${esc(bias ? `You weighted this card: ${shift}` : 'Weight this card up or down — one Codex tier per click')}">
+      <button class="bias-btn" data-act="cand-bias-down" data-id="${cardId}" aria-label="${esc(down)}" title="${esc(down)}" ${bias > -MAX_BIAS ? '' : 'disabled'}>▾</button>
+      <button class="bias-val num" data-act="cand-bias-clear" data-id="${cardId}" aria-label="Your weighting: ${bias || 'none'}. Click to reset." title="Reset to the community ranking" ${bias ? '' : 'disabled'}>${bias ? esc(biasBadge(bias)) : '·'}</button>
+      <button class="bias-btn" data-act="cand-bias-up" data-id="${cardId}" aria-label="${esc(up)}" title="${esc(up)}" ${bias < MAX_BIAS ? '' : 'disabled'}>▴</button>
+    </span>`;
 }
 
 function renderRanking() {
   const { results, skip } = view.ranked;
   const all = skip ? [...results, skip].sort((a, b) => b.total - a.total) : results;
+  const weighted = results.some((r) => r.detail.pref?.steps);
 
   return `
     <div class="block">
@@ -488,6 +511,7 @@ function renderRanking() {
       <div class="legend">
         <span><i data-kind="evidence"></i>measured — community runs</span>
         <span><i data-kind="fit"></i>inferred — fit to your deck</span>
+        ${weighted ? '<span><i data-kind="preference"></i>yours — cards you weighted</span>' : ''}
       </div>
       ${all.map((r, i) => (r.isSkip ? skipCard(r, i, all.length) : resultCard(r, i))).join('')}
     </div>`;
@@ -508,7 +532,7 @@ function scoreBar(contributions) {
   const negHtml = neg.map((c) => {
     const w = Math.min(-c.delta, right);
     right -= w;
-    return `<span class="bar-seg" data-kind="negative" style="left:${right}%;width:${w}%"></span>`;
+    return `<span class="bar-seg" data-kind="${c.key === 'preference' ? 'preference' : 'negative'}" style="left:${right}%;width:${w}%"></span>`;
   }).join('');
   return `<div class="bar">${negHtml}${posHtml}<span class="bar-tick" style="left:50%"></span></div>`;
 }
@@ -520,9 +544,10 @@ function resultCard(r, i) {
     <article class="result ${top ? 'result--top' : ''}">
       <div class="result-head">
         <span class="result-rank num">${i + 1}</span>
-        <span class="result-name">
+        <span class="result-name" data-tip="${r.cardId}" data-tip-upgraded="${!!r.upgraded}">
           ${img ? `<img src="${img}" alt="" loading="lazy" style="width:26px;height:26px;object-fit:cover;object-position:center 22%;border-radius:2px">` : ''}
           <span>${esc(r.card.name)}${r.upgraded ? '<b style="color:var(--gold)">+</b>' : ''}</span>
+          ${r.detail.pref?.steps ? `<span class="bias-tag" data-state="${r.detail.pref.steps > 0 ? 'up' : 'down'}" title="Your weighting — ${esc(r.detail.pref.shift)}">${esc(biasBadge(r.detail.pref.steps))}</span>` : ''}
         </span>
         <span class="result-score num">${Math.round(r.total)}</span>
       </div>
@@ -585,6 +610,8 @@ function tagline(r) {
   }
   const dup = r.detail.dup;
   if (dup.note) bits.push(dup.note);
+  const pref = r.detail.pref;
+  if (pref?.steps) bits.push(`You moved it ${pref.shift}`);
   return bits.length ? `${bits.join('. ')}.` : 'Nothing in your build interacts with this yet.';
 }
 
@@ -610,6 +637,8 @@ function whyPanel(r) {
       note = d.upg.note || '';
     } else if (c.key === 'party') {
       note = d.party.contributions.map((x) => `${x.label}: ${x.detail}`).join(' · ');
+    } else if (c.key === 'preference') {
+      note = d.pref.note;
     }
     return `
       <div class="ledger-row" data-kind="${kindOf(c)}">
@@ -662,7 +691,7 @@ function renderRemovals() {
     <div class="block">
       <h3>Best removals <span class="eyebrow">click to remove a copy</span></h3>
       ${list.map((r) => `
-        <button class="removal" data-act="remove-one" data-id="${r.cardId}" title="Remove one copy of ${esc(r.card.name)} from your deck">
+        <button class="removal" data-act="remove-one" data-id="${r.cardId}" data-tip="${r.cardId}" aria-label="Remove one copy of ${esc(r.card.name)} from your deck">
           <span class="spine" data-type="${r.card.type_key || r.card.type}"></span>
           <span>
             <span class="removal-name">${esc(r.card.name)}${r.copies > 1 ? ` <span class="muted num">×${r.copies}</span>` : ''}</span>
@@ -681,10 +710,11 @@ function renderRemovals() {
 
 /* ------------------------------------------------------------------ picker */
 
-const picker = { open: false, kind: 'card', purpose: 'deck', playerId: null, query: '', filters: {}, onPick: null };
+const picker = { open: false, kind: 'card', purpose: 'deck', playerId: null, query: '', filters: {}, allColors: false, onPick: null };
 
 export function openPicker(opts) {
-  Object.assign(picker, { open: true, query: '', filters: {} }, opts);
+  // The character restriction is the normal case, so it comes back on every time.
+  Object.assign(picker, { open: true, query: '', filters: {}, allColors: false }, opts);
   $('#picker').hidden = false;
   $('#picker-title').textContent = opts.title || 'Add card';
   const input = $('#picker-search');
@@ -709,11 +739,13 @@ function renderPicker() {
   const forPlayer = picker.playerId ? S.playerById(picker.playerId) : p;
   const charId = forPlayer?.character || p.character;
 
+  const purpose = picker.purpose === 'reward' ? 'reward' : 'deck';
   const pool = picker.kind === 'relic'
     ? relicPool(charId)
-    : cardPool(charId, S.state.game.mode, picker.purpose === 'reward' ? 'reward' : 'deck');
+    : cardPool(charId, S.state.game.mode, purpose, { allColors: picker.allColors });
 
   const results = search(pool, picker.query, picker.filters);
+  const ownColor = colorOf(charId);
 
   $('#picker-filters').innerHTML = picker.kind === 'relic'
     ? ['Common', 'Uncommon', 'Rare', 'Boss', 'Shop', 'Ancient'].map((r) => `<button class="filter" data-act="pf-rarity" data-v="${r}" aria-pressed="${picker.filters.rarity === r}">${r}</button>`).join('')
@@ -721,22 +753,32 @@ function renderPicker() {
       ...TYPE_FILTERS.map((t) => `<button class="filter" data-act="pf-type" data-v="${t}" aria-pressed="${picker.filters.type === t}">${t}</button>`),
       '<span style="width:10px"></span>',
       ...RARITY_FILTERS.map((r) => `<button class="filter" data-act="pf-rarity" data-v="${r}" aria-pressed="${picker.filters.rarity === r}">${r}</button>`),
+      `<span style="flex:1"></span>`,
+      `<button class="filter filter--wide" data-act="pf-colors" aria-pressed="${picker.allColors}"
+         title="Kaleidoscope, Prismatic Shard and the like can hand you another character's cards. Off by default, because the rest of the time they cannot appear.">
+         ${picker.allColors ? '✓ ' : ''}Other characters’ cards${picker.allColors ? '' : ` (+${offColorCount(charId, S.state.game.mode, purpose)})`}
+       </button>`,
     ].join('');
 
   $('#picker-grid').innerHTML = results.length
-    ? results.slice(0, 300).map(albumTile).join('')
-    : `<p class="empty" style="grid-column:1/-1">Nothing matches “${esc(picker.query)}”. Try a mechanic like “block” or “exhaust”.</p>`;
+    ? results.slice(0, 300).map((e) => albumTile(e, ownColor)).join('')
+    : `<p class="empty" style="grid-column:1/-1">Nothing matches “${esc(picker.query)}”.
+        ${picker.allColors ? 'Try a mechanic like “block” or “exhaust”.' : 'Try a mechanic like “block” or “exhaust”, or turn on other characters’ cards.'}</p>`;
 }
 
-function albumTile(e) {
+function albumTile(e, ownColor) {
   const img = imageUrl(e);
   const isRelic = e.kind === 'relic';
   const rarity = e.rarity_key || e.rarity;
   const cost = e.cost === -1 ? 'X' : e.cost;
   const m = !isRelic && view.cardMetrics ? view.cardMetrics.get(e.id, false).row : null;
+  // Borrowed cards are labelled: it matters that this is not your colour.
+  const foreign = !isRelic && ownColor && e.color !== ownColor && e.color !== 'colorless' ? colorLabel(e.color) : '';
   return `
-    <button class="albumcard" data-act="picker-pick" data-id="${e.id}" title="${esc(plain(e.description))}">
-      <span class="albumcard-art ${isRelic ? 'albumcard-art--relic' : ''}" style="${img ? `background-image:url('${img}')` : ''}"></span>
+    <button class="albumcard ${foreign ? 'albumcard--foreign' : ''}" data-act="picker-pick" data-id="${e.id}" data-tip="${e.id}" data-tip-kind="${isRelic ? 'relic' : 'card'}">
+      <span class="albumcard-art ${isRelic ? 'albumcard-art--relic' : ''}" style="${img ? `background-image:url('${img}')` : ''}">
+        ${foreign ? `<span class="albumcard-color">${esc(foreign)}</span>` : ''}
+      </span>
       <span class="albumcard-body">
         <span class="albumcard-name">${esc(e.name)}</span>
         <span class="albumcard-meta">
@@ -744,7 +786,7 @@ function albumTile(e) {
           ${isRelic ? '' : `<span>${cost ?? '—'}</span>`}
         </span>
         ${m?.score != null ? `<span class="albumcard-score">Codex ${m.score}${m.tier ? ` · ${m.tier}` : ''}</span>` : ''}
-        <span class="albumcard-text">${rich(e.description).slice(0, 150)}</span>
+        <span class="albumcard-text">${richClamp(e.description, 150)}</span>
       </span>
     </button>`;
 }
