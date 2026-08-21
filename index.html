@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spire Advisor — live build advisor for Slay the Spire 2</title>
+<meta name="description" content="Enter your live Slay the Spire 2 run and get ranked card picks, a real skip score, and removal advice built from community run statistics and your actual deck.">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%2316131a'/><path d='M16 5l8 22H8z' fill='%23ff7f45'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze:wght@500;600&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- New-run screen. Replaced by the board once a character is chosen. -->
+<div class="setup" id="setup">
+  <div class="setup-inner" id="setup-inner">
+    <h1>Spire <em>Advisor</em></h1>
+    <p class="lede">Loading the card database from Spire Codex…</p>
+  </div>
+</div>
+
+<header class="topbar">
+  <h1 class="wordmark">Spire <em>Advisor</em></h1>
+  <div class="runline" id="runline"></div>
+  <div class="topbar-actions" id="topbar-actions"></div>
+</header>
+
+<main class="board" id="board">
+  <aside class="panel panel--run" id="panel-run" aria-label="Run context"></aside>
+  <section class="panel panel--build" id="panel-build" aria-label="Your build"></section>
+  <section class="panel panel--advisor" id="panel-advisor" aria-label="Advisor"></section>
+</main>
+
+<footer class="site-foot">
+  <p><strong>Unofficial Slay the Spire 2 community tool.</strong> Not affiliated with or endorsed by Mega Crit. Game content and trademarks belong to their respective owners.</p>
+  <p>Card data, artwork and run statistics come from the <a href="https://spire-codex.com/" target="_blank" rel="noopener">Spire Codex</a> public API, loaded directly in your browser and served from their CDN. Your run stays on this device — nothing about it is uploaded.</p>
+  <p id="foot-data" class="num"></p>
+</footer>
+
+<!-- Card / relic album -->
+<div class="picker" id="picker" hidden role="dialog" aria-modal="true" aria-labelledby="picker-title">
+  <div class="picker-panel">
+    <div class="picker-head">
+      <div class="picker-headrow">
+        <h2 id="picker-title">Add card</h2>
+        <button class="btn btn--ghost btn--sm" data-act="picker-close">Close (Esc)</button>
+      </div>
+      <input class="input" id="picker-search" type="search" placeholder="Search by name, rules text or mechanic — try “poison” or “discard”" autocomplete="off">
+      <div class="picker-filters" id="picker-filters"></div>
+    </div>
+    <div class="picker-grid" id="picker-grid"></div>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
